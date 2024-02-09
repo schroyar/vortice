@@ -26,10 +26,17 @@ struct Body {
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 enum Payload {
-    Echo { echo: String },
-    EchoOk { echo: String },
-    Init { node_id: String, node_ids: Vec<String>},
-    InitOk
+    Echo {
+        echo: String,
+    },
+    EchoOk {
+        echo: String,
+    },
+    Init {
+        node_id: String,
+        node_ids: Vec<String>,
+    },
+    InitOk,
 }
 
 struct EchoNode {
@@ -37,13 +44,9 @@ struct EchoNode {
 }
 
 impl EchoNode {
-    pub fn step(
-        &mut self,
-        input: Msg,
-        output: &mut StdoutLock,
-    ) -> eyre::Result<()> {
+    pub fn step(&mut self, input: Msg, output: &mut StdoutLock) -> eyre::Result<()> {
         match input.body.payload {
-            Payload::Init{ ..} => {
+            Payload::Init { .. } => {
                 let ans = Msg {
                     src: input.dst,
                     dst: input.src,
@@ -54,8 +57,9 @@ impl EchoNode {
                     },
                 };
 
-                serde_json::to_writer(&mut *output, &ans).context("Serialize::serialize failed init")?;
-                output.write_all(b"\n").context("Write failed")?;
+                serde_json::to_writer(&mut *output, &ans)
+                    .context("Serialize::serialize failed init")?;
+                output.write_all(b"\n").context("Write::failed")?;
 
                 self.id += 1;
             }
@@ -71,8 +75,9 @@ impl EchoNode {
                     },
                 };
 
-                serde_json::to_writer(&mut *output, &ans).context("Serialize::serialize failed init")?;
-                output.write_all(b"\n").context("Write failed")?;
+                serde_json::to_writer(&mut *output, &ans)
+                    .context("Serialize::serialize failed init")?;
+                output.write_all(b"\n").context("Write::failed")?;
 
                 self.id += 1;
             }
@@ -89,12 +94,14 @@ fn main() -> eyre::Result<()> {
 
     let msgs = serde_json::Deserializer::from_reader(stdin).into_iter::<Msg>();
 
-    let mut state = EchoNode { id: 0};
+    let mut state = EchoNode { id: 0 };
 
     for msg in msgs {
         let mes = msg.context("STDIN::Could not deserialize")?;
 
-        state.step(mes, &mut stdout).context("EchoNode::step failed")?;
+        state
+            .step(mes, &mut stdout)
+            .context("EchoNode::step failed")?;
     }
 
     Ok(())
