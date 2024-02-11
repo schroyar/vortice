@@ -2,7 +2,6 @@ use std::io::{StdoutLock, Write};
 
 use eyre::Context;
 use serde::{Deserialize, Serialize};
-use serde_json::ser::PrettyFormatter;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename = "Message")]
@@ -37,6 +36,10 @@ enum Payload {
         node_ids: Vec<String>,
     },
     InitOk,
+    Generate,
+    GenerateOk {
+        id: String
+    }
 }
 
 struct EchoNode {
@@ -81,7 +84,26 @@ impl EchoNode {
 
                 self.id += 1;
             }
-            Payload::EchoOk { .. } => {}
+            Payload::Generate  => {
+                let id_ = ulid::Ulid::new();
+
+                let ans = Msg {
+                    src: input.dst,
+                    dst: input.src,
+                    body: Body {
+                        id: Some(self.id),
+                        in_reply_to: input.body.id,
+                        payload: Payload::GenerateOk { id: id_.to_string() },
+                    },
+                };
+
+                serde_json::to_writer(&mut *output, &ans)
+                    .context("Serialize::serialize failed init")?;
+                output.write_all(b"\n").context("Write::failed")?;
+
+                self.id += 1;
+            },
+            _ => {}
         };
 
         Ok(())
