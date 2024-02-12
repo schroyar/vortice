@@ -1,4 +1,7 @@
-use std::io::{StdoutLock, Write};
+use std::{
+    collections::HashMap,
+    io::{StdoutLock, Write},
+};
 
 use eyre::Context;
 use serde::{Deserialize, Serialize};
@@ -38,15 +41,28 @@ enum Payload {
     InitOk,
     Generate,
     GenerateOk {
-        id: String
-    }
+        id: String,
+    },
+    Broadcast {
+        message: usize,
+    },
+    BroadcastOk,
+    Read,
+    ReadOk {
+        messages: Vec<usize>,
+    },
+    Topology {
+        topology: HashMap<String, Vec<String>>,
+    },
+    TopologyOk,
 }
 
-struct EchoNode {
+struct Node {
     id: usize,
+    messages: Vec<usize>,
 }
 
-impl EchoNode {
+impl Node {
     pub fn step(&mut self, input: Msg, output: &mut StdoutLock) -> eyre::Result<()> {
         match input.body.payload {
             Payload::Init { .. } => {
@@ -84,7 +100,7 @@ impl EchoNode {
 
                 self.id += 1;
             }
-            Payload::Generate  => {
+            Payload::Generate => {
                 let id_ = ulid::Ulid::new();
 
                 let ans = Msg {
@@ -93,7 +109,9 @@ impl EchoNode {
                     body: Body {
                         id: Some(self.id),
                         in_reply_to: input.body.id,
-                        payload: Payload::GenerateOk { id: id_.to_string() },
+                        payload: Payload::GenerateOk {
+                            id: id_.to_string(),
+                        },
                     },
                 };
 
@@ -102,7 +120,62 @@ impl EchoNode {
                 output.write_all(b"\n").context("Write::failed")?;
 
                 self.id += 1;
-            },
+            }
+            Payload::Broadcast { message } => {
+                self.messages.push(message);
+
+                let ans = Msg {
+                    src: input.dst,
+                    dst: input.src,
+                    body: Body {
+                        id: Some(self.id),
+                        in_reply_to: input.body.id,
+                        payload: Payload::BroadcastOk,
+                    },
+                };
+
+                serde_json::to_writer(&mut *output, &ans)
+                    .context("Serialize::serialize failed init")?;
+                output.write_all(b"\n").context("Write::failed")?;
+
+                self.id += 1;
+            }
+            Payload::Read => {
+                let ans = Msg {
+                    src: input.dst,
+                    dst: input.src,
+                    body: Body {
+                        id: Some(self.id),
+                        in_reply_to: input.body.id,
+                        payload: Payload::ReadOk {
+                            messages: self.messages.clone(),
+                        },
+                    },
+                };
+
+                serde_json::to_writer(&mut *output, &ans)
+                    .context("Serialize::serialize failed init")?;
+                output.write_all(b"\n").context("Write::failed")?;
+
+                self.id += 1;
+            }
+            Payload::Topology { topology: _ } => {
+                let ans = Msg {
+                    src: input.dst,
+                    dst: input.src,
+                    body: Body {
+                        id: Some(self.id),
+                        in_reply_to: input.body.id,
+                        payload: Payload::TopologyOk,
+                    },
+                };
+
+                serde_json::to_writer(&mut *output, &ans)
+                    .context("Serialize::serialize failed init")?;
+                output.write_all(b"\n").context("Write::failed")?;
+
+                self.id += 1;
+            }
             _ => {}
         };
 
@@ -116,7 +189,10 @@ fn main() -> eyre::Result<()> {
 
     let msgs = serde_json::Deserializer::from_reader(stdin).into_iter::<Msg>();
 
-    let mut state = EchoNode { id: 0 };
+    let mut state = Node {
+        id: 0,
+        messages: Vec::new(),
+    };
 
     for msg in msgs {
         let mes = msg.context("STDIN::Could not deserialize")?;
